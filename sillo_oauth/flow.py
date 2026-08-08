@@ -11,8 +11,11 @@ failures redirect — stays in the handler that calls them::
     @app.get("/auth/google/redirect")
     async def start(request, response):
         authorize = authorize_url(google)
-        response.set_cookie(**authorize.cookie_kwargs())
-        return response.redirect(authorize.url)
+        # Cookie after the redirect: sillo's Responder has nothing to attach
+        # one to until then.
+        return response.redirect(authorize.url).set_cookie(
+            **authorize.cookie_kwargs()
+        )
 
     @app.get("/auth/google/callback")
     async def finish(request, response):
@@ -283,19 +286,36 @@ async def exchange(
     *,
     secret: str | None = None,
     cookie_name: str | None = None,
+    state_value: str | None = None,
     redirect_uri: str | None = None,
 ) -> OAuthProfile:
     """Complete a login from an incoming callback request.
 
-    Reads the ``code``, ``state`` and ``error`` query parameters and the state
-    cookie off *request*, then does everything :func:`complete` does. It reads
-    the request and returns data — it does not touch the response.
+    Reads the ``code``, ``state`` and ``error`` query parameters off *request*,
+    together with the value :func:`authorize_url` asked to be stored, then does
+    everything :func:`complete` does. It reads the request and returns data —
+    it does not touch the response.
+
+    By default the stored value is read from the cookie
+    :func:`authorize_url` named. An application that put it somewhere else —
+    the session, a cache keyed by device — hands it back through
+    *state_value*::
+
+        # at the redirect step
+        request.session["oauth_state"] = authorize.cookie_value
+
+        # at the callback (sillo's Session has get/delete, not pop)
+        stored = request.session.get("oauth_state")
+        request.session.delete("oauth_state")
+        profile = await exchange(google, request, state_value=stored)
 
     Args:
         provider: The provider that issued the callback.
         request: The sillo request for the callback.
         secret: Signing secret, overriding the provider's.
         cookie_name: Cookie to read the state from, overriding the default.
+            Ignored when *state_value* is given.
+        state_value: The stored state, when it did not travel as a cookie.
         redirect_uri: Callback URL for the token request. Must match the one
             used to build the authorize URL.
 
@@ -306,12 +326,14 @@ async def exchange(
         OAuthError: Any failure in the flow — see :func:`complete`.
     """
     query = request.query_params
-    cookies = request.cookies
+    if state_value is None:
+        state_value = request.cookies.get(cookie_name or state_cookie_name(provider))
+
     return await complete(
         provider,
         code=query.get("code"),
         state=query.get("state"),
-        cookie_value=cookies.get(cookie_name or state_cookie_name(provider)),
+        cookie_value=state_value,
         error=query.get("error"),
         error_description=query.get("error_description"),
         secret=secret,

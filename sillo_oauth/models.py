@@ -21,8 +21,8 @@ class AuthorizeURL:
     to the provider — proof that *this* server started *this* login — is
     handed back as a cookie to set rather than written anywhere. Storing it
     somewhere other than a cookie (the session, say) is fine: only
-    ``cookie_value`` matters, and :func:`sillo_oauth.exchange` will read it
-    from wherever you pass it.
+    ``cookie_value`` matters, and ``exchange(..., state_value=...)`` takes it
+    back from wherever you kept it.
 
     Attributes:
         url: Where to send the person. A plain string — build the redirect

@@ -424,6 +424,75 @@ class TestNoPersistence:
         assert "session" not in finished.headers.get("set-cookie", "")
 
 
+class TestStateInTheSession:
+    """Keeping the state somewhere other than a cookie."""
+
+    def test_state_can_live_in_the_session(self, google):
+        """``cookie_value`` is just a signed string; the cookie is a default.
+
+        An app that already has a session may prefer to keep it there — no
+        extra Set-Cookie, and it disappears with the session.
+        """
+        app = session_app()
+
+        async def start(request, response):
+            authorize = authorize_url(google)
+            request.session["oauth_state"] = authorize.cookie_value
+            return response.redirect(authorize.url)
+
+        async def finish(request, response):
+            try:
+                # sillo's Session has get/delete, not pop.
+                stored = request.session.get("oauth_state")
+                request.session.delete("oauth_state")
+                profile = await exchange(google, request, state_value=stored)
+            except OAuthError as exc:
+                return response.json({"error": exc.code}, status_code=400)
+            return response.json({"key": profile.key})
+
+        app.get("/auth/google/redirect", handler=start)
+        app.get("/auth/google/callback", handler=finish)
+        client = TestClient(app, follow_redirects=False)
+
+        started = client.get("/auth/google/redirect")
+        assert "oauth_state_google" not in started.headers.get("set-cookie", "")
+
+        finished = client.get(
+            f"/auth/google/callback?code=test-code&state={state_from(started)}"
+        )
+
+        assert finished.json() == {"key": "google:google-subject-1"}
+
+    def test_a_consumed_session_state_cannot_be_replayed(self, google):
+        """Popping it makes the callback single-use, which a cookie is not."""
+        app = session_app()
+
+        async def start(request, response):
+            authorize = authorize_url(google)
+            request.session["oauth_state"] = authorize.cookie_value
+            return response.redirect(authorize.url)
+
+        async def finish(request, response):
+            try:
+                # sillo's Session has get/delete, not pop.
+                stored = request.session.get("oauth_state")
+                request.session.delete("oauth_state")
+                profile = await exchange(google, request, state_value=stored)
+            except OAuthError as exc:
+                return response.json({"error": exc.code}, status_code=400)
+            return response.json({"key": profile.key})
+
+        app.get("/auth/google/redirect", handler=start)
+        app.get("/auth/google/callback", handler=finish)
+        client = TestClient(app, follow_redirects=False)
+
+        started = client.get("/auth/google/redirect")
+        callback = f"/auth/google/callback?code=test-code&state={state_from(started)}"
+
+        assert client.get(callback).status_code == 200
+        assert client.get(callback).json() == {"error": "state_mismatch"}
+
+
 class TestAccountLinking:
     """Connecting a second provider to an already-authenticated user."""
 

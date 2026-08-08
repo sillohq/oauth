@@ -180,11 +180,13 @@ Storing state somewhere other than a cookie works the same way — hand the
 stored value back explicitly:
 
 ```python
+# at the redirect step
 request.session["oauth_state"] = authorize.cookie_value
-...
-profile = await exchange(
-    google, request, state_value=request.session.pop("oauth_state")
-)
+
+# at the callback — sillo's Session has get/delete, not pop
+stored = request.session.get("oauth_state")
+request.session.delete("oauth_state")
+profile = await exchange(google, request, state_value=stored)
 ```
 
 ## Development
