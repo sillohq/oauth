@@ -1,5 +1,7 @@
 # sillo-oauth
 
+[![Test](https://github.com/sillohq/oauth/actions/workflows/test.yml/badge.svg)](https://github.com/sillohq/oauth/actions/workflows/test.yml)
+
 OAuth 2.0 and OpenID Connect login for [Sillo](https://github.com/sillohq/core).
 
 Two functions and a provider object. Neither function takes a response, builds
@@ -95,6 +97,24 @@ gitlab = OAuthProvider(
 )
 ```
 
+Self-hosted installations override the endpoints, and everything derived from
+them follows — pointing GitHub at an Enterprise host also moves the address
+lookup it falls back to:
+
+```python
+github = GithubOAuthProvider(
+    ...,
+    userinfo_endpoint="https://github.acme-corp.test/api/v3/user",
+)
+```
+
+Extra headers are merged over the provider's defaults, so adding one does not
+mean restating the rest:
+
+```python
+acme = OAuthProvider(..., userinfo_headers={"X-Tenant": "acme"})
+```
+
 To map a provider's fields yourself, pass `profile_mapper` or subclass and
 override `map_profile`:
 
@@ -157,7 +177,13 @@ Every failure raises an `OAuthError` subclass carrying a stable, URL-safe
 * **State is verified before anything is sent to the provider**, so a forged
   callback cannot make your server issue a token request.
 * Reserved parameters (`state`, `code_challenge`, `client_id`, …) cannot be
-  overridden through `extra_params`.
+  overridden through `extra_params`. Supplying one raises rather than being
+  ignored, because an application that believes it is setting `state` and
+  silently is not has a security expectation the code no longer meets.
+* **Tokens are redacted from reprs.** `logger.info("signed in %s", profile)` is
+  an ordinary line to write, and an error tracker collects tracebacks holding
+  profiles in frames. Neither leaks a credential; attribute access is
+  unaffected.
 
 `state_secret` is unrelated to `client_secret`: it protects your own cookies,
 not your relationship with the provider. Any high-entropy application key
@@ -193,8 +219,10 @@ profile = await exchange(google, request, state_value=stored)
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 200+ tests
+pytest              # 240+ tests, no network
 ruff check .
+ruff format --check .
+mypy sillo_oauth/
 ```
 
 The suite never touches the network and never needs real credentials. Provider
