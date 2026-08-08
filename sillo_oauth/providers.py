@@ -13,6 +13,7 @@ handles any provider not listed here.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from types import MappingProxyType
 from typing import Any
 
 import httpx
@@ -78,10 +79,16 @@ class OAuthProvider:
 
     #: Sent with the token request. The ``Accept`` header is not decoration:
     #: several providers return a form-encoded body without it.
-    token_headers: Mapping[str, str] = {"Accept": "application/json"}
+    #:
+    #: Read-only, because a plain dict here is shared by every instance of the
+    #: class — mutating it to add one header to one provider would silently
+    #: change every other provider of that type in the process.
+    token_headers: Mapping[str, str] = MappingProxyType({"Accept": "application/json"})
 
     #: Sent with the userinfo request, alongside ``Authorization``.
-    userinfo_headers: Mapping[str, str] = {"Accept": "application/json"}
+    userinfo_headers: Mapping[str, str] = MappingProxyType(
+        {"Accept": "application/json"}
+    )
 
     def __init__(
         self,
@@ -97,6 +104,8 @@ class OAuthProvider:
         userinfo_endpoint: str | None = None,
         use_pkce: bool | None = None,
         authorize_params: Mapping[str, str] | None = None,
+        token_headers: Mapping[str, str] | None = None,
+        userinfo_headers: Mapping[str, str] | None = None,
         profile_mapper: Callable[[dict[str, Any]], Mapping[str, Any]] | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
         timeout: float = 10.0,
@@ -119,6 +128,13 @@ class OAuthProvider:
                 unknown parameters need this off.
             authorize_params: Extra query parameters added to every authorize
                 URL — ``{"access_type": "offline"}`` and friends.
+            token_headers: Headers merged over the class defaults for the
+                token request. Merged rather than replaced, so adding one
+                header does not silently drop the ``Accept`` that several
+                providers need to answer with JSON.
+            userinfo_headers: Headers merged over the class defaults for the
+                userinfo request. ``Authorization`` is always set from the
+                access token and cannot be overridden here.
             profile_mapper: Replaces the subclass's field mapping. Receives
                 the raw userinfo dict, returns a mapping of
                 :class:`~sillo_oauth.models.OAuthProfile` field names.
@@ -154,6 +170,16 @@ class OAuthProvider:
 
         self.scopes: list[str] = (
             list(scopes) if scopes is not None else list(self.default_scopes)
+        )
+
+        # Merged over the class defaults, then frozen: an instance that wants
+        # one extra header should not have to restate the ones that make the
+        # provider work.
+        self.token_headers = MappingProxyType(
+            {**type(self).token_headers, **(token_headers or {})}
+        )
+        self.userinfo_headers = MappingProxyType(
+            {**type(self).userinfo_headers, **(userinfo_headers or {})}
         )
 
         # Checked here rather than at redirect time: a provider with no

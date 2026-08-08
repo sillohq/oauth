@@ -84,6 +84,86 @@ class TestUserinfoRequest:
             await fetch_profile(provider, TOKENS)
 
 
+class TestHeaderCustomisation:
+    """Per-instance headers, without subclassing."""
+
+    async def test_extra_userinfo_headers_are_sent(self, stub, google):
+        provider = GoogleOAuthProvider(
+            client_id=CLIENT_ID,
+            state_secret=STATE_SECRET,
+            redirect_uri=REDIRECT_URI,
+            userinfo_headers={"X-Tenant": "acme"},
+            transport=stub.transport,
+        )
+
+        await fetch_profile(provider, TOKENS)
+
+        request = stub.request_to(GoogleOAuthProvider.userinfo_endpoint)
+        assert request.headers["x-tenant"] == "acme"
+
+    async def test_extra_headers_merge_rather_than_replace(self, stub, google):
+        """Dropping Accept would make several providers answer non-JSON."""
+        provider = GoogleOAuthProvider(
+            client_id=CLIENT_ID,
+            state_secret=STATE_SECRET,
+            redirect_uri=REDIRECT_URI,
+            userinfo_headers={"X-Tenant": "acme"},
+            transport=stub.transport,
+        )
+
+        await fetch_profile(provider, TOKENS)
+
+        request = stub.request_to(GoogleOAuthProvider.userinfo_endpoint)
+        assert request.headers["accept"] == "application/json"
+
+    async def test_a_default_header_can_still_be_overridden(self, stub, google):
+        provider = GoogleOAuthProvider(
+            client_id=CLIENT_ID,
+            state_secret=STATE_SECRET,
+            redirect_uri=REDIRECT_URI,
+            userinfo_headers={"Accept": "application/ld+json"},
+            transport=stub.transport,
+        )
+
+        await fetch_profile(provider, TOKENS)
+
+        request = stub.request_to(GoogleOAuthProvider.userinfo_endpoint)
+        assert request.headers["accept"] == "application/ld+json"
+
+    async def test_authorization_cannot_be_overridden(self, stub, google):
+        """The access token is not the application's to replace."""
+        provider = GoogleOAuthProvider(
+            client_id=CLIENT_ID,
+            state_secret=STATE_SECRET,
+            redirect_uri=REDIRECT_URI,
+            userinfo_headers={"Authorization": "Bearer attacker-supplied"},
+            transport=stub.transport,
+        )
+
+        await fetch_profile(provider, TOKENS)
+
+        request = stub.request_to(GoogleOAuthProvider.userinfo_endpoint)
+        assert request.headers["authorization"] == f"Bearer {ACCESS_TOKEN}"
+
+    def test_instance_headers_do_not_leak_into_the_class(self, stub):
+        """A plain dict here would be shared by every provider of the type."""
+        before = dict(GoogleOAuthProvider.token_headers)
+
+        GoogleOAuthProvider(
+            client_id=CLIENT_ID,
+            state_secret=STATE_SECRET,
+            redirect_uri=REDIRECT_URI,
+            token_headers={"X-One-Off": "yes"},
+            transport=stub.transport,
+        )
+
+        assert dict(GoogleOAuthProvider.token_headers) == before
+
+    def test_class_defaults_are_read_only(self):
+        with pytest.raises(TypeError):
+            GoogleOAuthProvider.token_headers["Accept"] = "text/plain"  # type: ignore[index]
+
+
 class TestGoogleMapping:
     """Google's OIDC claims."""
 
