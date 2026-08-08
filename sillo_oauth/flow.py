@@ -148,15 +148,25 @@ def _require_redirect_uri(provider: OAuthProvider, redirect_uri: str | None) -> 
 def _merge_query(url: str, params: dict[str, str]) -> str:
     """Add query parameters to a URL that may already have some.
 
+    A configured endpoint can legitimately carry its own query — a tenant, an
+    API version — and those are kept. Anything it carries that *we* are also
+    setting is dropped instead of appended: a URL with two ``state`` values
+    leaves the provider to pick one, and the flow only works if it happens to
+    pick ours.
+
     Args:
         url: Base URL, possibly carrying its own query string.
-        params: Parameters to append.
+        params: Parameters to set, which win over anything already there.
 
     Returns:
-        The combined URL, with existing parameters preserved.
+        The combined URL.
     """
     parts = urlsplit(url)
-    existing = parse_qsl(parts.query, keep_blank_values=True)
+    existing = [
+        (name, value)
+        for name, value in parse_qsl(parts.query, keep_blank_values=True)
+        if name not in params
+    ]
     query = urlencode([*existing, *params.items()])
     return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
 

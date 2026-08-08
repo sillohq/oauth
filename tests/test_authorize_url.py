@@ -257,6 +257,34 @@ class TestExtraParameters:
         assert params["tenant"] == "acme-inc"
         assert params["response_type"] == "code"
 
+    def test_endpoint_query_never_duplicates_a_managed_parameter(self, stub):
+        """Two ``state`` values would leave the provider to pick one.
+
+        A misconfigured endpoint with its own ``state=`` is the caller's
+        mistake, but appending ours after it produces a URL that works only
+        if the provider happens to read the second occurrence.
+        """
+        provider = OAuthProvider(
+            name="acme",
+            client_id=CLIENT_ID,
+            state_secret=STATE_SECRET,
+            redirect_uri=REDIRECT_URI,
+            authorize_endpoint=(
+                "https://acme.test/authorize?state=stale&client_id=wrong&keep=yes"
+            ),
+            token_endpoint="https://acme.test/token",
+            transport=stub.transport,
+        )
+
+        result = authorize_url(provider)
+        query = urlsplit(result.url).query
+        params = parse_qs(query)
+
+        assert params["state"] == [result.state]
+        assert params["client_id"] == [CLIENT_ID]
+        assert params["keep"] == ["yes"], "unrelated endpoint query survives"
+        assert query.count("state=") == 1
+
 
 class TestOverrides:
     """Per-call overrides of provider configuration."""
