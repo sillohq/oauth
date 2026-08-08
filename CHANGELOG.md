@@ -4,10 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.0] — 2026-08-08
 
-Everything below landed after the initial commit and before the first tagged
-release, so it is grouped here rather than under a version nobody installed.
+First release. The package was written and then reviewed in one sitting, so
+the fixes below are against unreleased commits rather than against anything
+anyone installed — they are kept because two of them are worth a reader's
+attention, and because the reasoning is the useful part.
+
+Requires `sillo-framework>=0.0.1a15`. That is still an alpha, so this release
+is only as stable as the framework under it; the API here is what is being
+called stable at 0.1.0, not the ground it stands on.
 
 ### Added
 
@@ -60,6 +66,11 @@ release, so it is grouped here rather than under a version nobody installed.
 
 ### Security notes
 
-None of the above is a fix to a released version — the package has not been
-published — but two are worth calling out for anyone reading the history: the
-reserved-parameter override and the credential-leaking repr.
+Two of the fixes above would have been advisories had they shipped, and are
+called out here for anyone auditing the history:
+
+- `extra_params` could override `state` and `code_challenge`, disarming CSRF
+  and PKCE.
+- `OAuthTokens`' repr printed live credentials into logs and tracebacks.
+
+[0.1.0]: https://github.com/sillohq/oauth/releases/tag/oauth-v0.1.0

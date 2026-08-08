@@ -19,15 +19,27 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
       - name: Extract version from tag
         id: version
         run: |
           TAG="${{ github.ref_name }}"
-          echo "version=${TAG#oauth-v}" >> $GITHUB_OUTPUT
+          VERSION="${TAG#oauth-v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Releasing sillo-oauth v$VERSION"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # The install script has moved between ~/.cargo/bin and ~/.local/bin
+      # across uv versions. Add both so the PATH does not depend on which
+      # installer layout ships today.
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       # PyPI takes the version from the package, not the tag. Without this a
       # tag of oauth-v0.2.0 against a pyproject still saying 0.1.0 publishes
@@ -43,23 +55,49 @@ jobs:
           fi
           echo "both say $PKG_VERSION"
 
-      # A release that skips the suite is a release nobody checked. The tests
-      # need no network, so there is no excuse for not running them here.
-      - name: Test before publishing
-        run: |
-          python -m pip install --quiet -e ".[dev]"
-          python -m pytest tests/ -q
+      - name: Clean old builds
+        run: rm -rf dist build ./*.egg-info
 
-      - name: Build
+      - name: Setup virtual environment
+        run: uv venv
+
+      - name: Install dependencies
+        run: uv pip install -e ".[dev]"
+
+      # A release that skips the suite is a release nobody checked. The tests
+      # need no network and no credentials, so there is no excuse for not
+      # running them here.
+      - name: Run tests
+        run: uv run pytest tests/ -q --tb=short
+
+      - name: Build the package
+        run: uv build
+
+      # py.typed has no extension, so it falls outside hatchling's default
+      # include rules and has already been missing from a wheel once. A green
+      # test run would not notice.
+      - name: The wheel must carry py.typed
         run: |
-          rm -rf dist build ./*.egg-info
-          python -m pip install --quiet build
-          python -m build
+          python - <<'PY'
+          import glob, sys, zipfile
+          wheel = glob.glob("dist/*.whl")[0]
+          if "sillo_oauth/py.typed" not in zipfile.ZipFile(wheel).namelist():
+              sys.exit(f"::error::{wheel} ships no py.typed")
+          print(f"{wheel} carries py.typed")
+          PY
 
       - name: Check metadata
-        run: |
-          python -m pip install --quiet twine
-          python -m twine check dist/*
+        run: uvx twine check dist/*
 
+      # Prefers OIDC trusted publishing (the id-token permission above); falls
+      # back to an API token when the PYPI_TOKEN secret is set. Passing an empty
+      # --token is a hard failure, so the secret must not be forwarded blindly.
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        env:
+          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          if [ -n "$PYPI_TOKEN" ]; then
+            uv publish --token "$PYPI_TOKEN"
+          else
+            uv publish
+          fi
