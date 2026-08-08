@@ -51,6 +51,10 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["sillo_oauth"]
+# py.typed has no extension, so it is not picked up by the default include
+# rules and a wheel would ship without it -- leaving the Typing :: Typed
+# classifier claiming something downstream checkers cannot see.
+artifacts = ["sillo_oauth/py.typed"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
