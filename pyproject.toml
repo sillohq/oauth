@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sillo-oauth"
+version = "0.0.1a0"
+description = "OAuth 2.0 / OpenID Connect login for Sillo — plain functions, no router, no middleware."
+requires-python = ">=3.10"
+license = "BSD-3-Clause"
+authors = [
+    {name = "Chidebele Dunamis", email = "techwithdunamix@gmail.com"}
+]
+keywords = ["sillo", "oauth", "oauth2", "oidc", "sso", "google", "github", "asgi"]
+dependencies = [
+    # Only the pure-HTTP parts of the framework are touched (Request, and the
+    # HMAC helpers in sillo.helpers.crypto), so no ORM extra is required here.
+    # An application that resolves profiles onto ORM-backed users installs
+    # `sillo-framework[record]` itself.
+    "sillo-framework>=0.0.1a15",
+    "httpx>=0.23.3,<0.29.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.5",
+    "pytest-asyncio>=0.25.3",
+    # The integration suite drives a real sillo app through session and JWT
+    # login, which need the ORM-backed user base and PyJWT respectively.
+    "sillo-framework[record,jwt]>=0.0.1a15",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["sillo_oauth"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+# Lets the suite run straight from a checkout, without an editable install.
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+exclude = [".venv", "venv", "build", "dist", "__pypackages__"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/*" = ["F401", "E501"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+files = ["sillo_oauth"]
