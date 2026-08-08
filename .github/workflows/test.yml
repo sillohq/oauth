@@ -1,0 +1,84 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # The install script has moved between ~/.cargo/bin and ~/.local/bin
+      # across uv versions. Add both so the PATH does not depend on which
+      # installer layout ships today.
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install
+        run: |
+          uv venv
+          uv pip install -e ".[dev]" ruff mypy
+
+      # No `|| true` on any of these. The suite needs no network and no
+      # credentials, so a failure here is a real failure and gating on it is
+      # the whole point of running it.
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format
+        run: uv run ruff format --check .
+
+      - name: Type check
+        run: uv run mypy sillo_oauth/
+
+      - name: Test
+        run: uv run pytest tests/ -q
+
+  packaging:
+    name: Wheel contents
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build
+        run: |
+          python -m pip install --quiet build
+          python -m build --wheel
+
+      # py.typed has no extension, so it falls outside hatchling's default
+      # include rules. It has already been dropped from a wheel once; this
+      # keeps the Typing :: Typed classifier honest.
+      - name: The wheel must carry py.typed
+        run: |
+          python - <<'PY'
+          import glob, sys, zipfile
+          wheel = glob.glob("dist/*.whl")[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          if "sillo_oauth/py.typed" not in names:
+              sys.exit(f"::error::{wheel} ships no py.typed")
+          print(f"{wheel} carries py.typed")
+          PY
