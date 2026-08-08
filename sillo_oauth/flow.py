@@ -65,6 +65,22 @@ __all__ = [
 #: ``prompt=none`` request and means "ask them properly", not "they refused".
 _DENIAL_CODES = frozenset({"access_denied", "user_denied"})
 
+#: Authorize parameters this package computes, mapped to the proper way to
+#: influence them. Letting an application set these through ``extra_params``
+#: would silently disarm the flow — a supplied ``state`` or ``code_challenge``
+#: would replace the one the cookie was signed against, so either every login
+#: fails as a mismatch or, if the value is attacker-chosen, the CSRF and PKCE
+#: guarantees quietly stop holding.
+_RESERVED_PARAMS = {
+    "state": "it is generated and signed into the state cookie",
+    "code_challenge": "it is derived from the state",
+    "code_challenge_method": "it is derived from the state",
+    "response_type": "only the authorization code flow is supported",
+    "client_id": "set it on the provider",
+    "redirect_uri": "pass redirect_uri= instead",
+    "scope": "pass scopes= instead",
+}
+
 
 def state_cookie_name(provider: OAuthProvider) -> str:
     """The default cookie name for a provider's state.
@@ -145,6 +161,32 @@ def _merge_query(url: str, params: dict[str, str]) -> str:
     return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
 
 
+def _reject_reserved(extras: Mapping[str, str], provider: OAuthProvider) -> None:
+    """Refuse authorize parameters this package is responsible for.
+
+    Loudly, rather than by ignoring them: an application that thinks it is
+    setting ``state`` and silently is not has a security expectation that no
+    longer matches the code, and a 500 during development is a far better
+    outcome than a flow whose CSRF protection has quietly become decorative.
+
+    Args:
+        extras: The merged provider-level and per-call parameters.
+        provider: The provider, named in the error.
+
+    Raises:
+        ProviderMisconfigured: If any reserved parameter was supplied.
+    """
+    clashes = sorted(set(extras) & set(_RESERVED_PARAMS))
+    if not clashes:
+        return
+    detail = "; ".join(f"{name} ({_RESERVED_PARAMS[name]})" for name in clashes)
+    raise ProviderMisconfigured(
+        f"These authorize parameters are managed by sillo-oauth and cannot be "
+        f"overridden: {detail}",
+        provider=provider.name,
+    )
+
+
 def authorize_url(
     provider: OAuthProvider,
     *,
@@ -172,7 +214,10 @@ def authorize_url(
             caller can put anything in.
         extra_params: Extra query parameters for this call only, merged over
             the provider's own. Use for one-off prompts such as
-            ``{"prompt": "consent"}`` or ``{"login_hint": email}``.
+            ``{"prompt": "consent"}`` or ``{"login_hint": email}``. Parameters
+            this package computes — ``state``, ``code_challenge``,
+            ``client_id`` and friends — are refused rather than silently
+            ignored; see :data:`_RESERVED_PARAMS`.
         ttl: Seconds the state stays valid.
         secret: Signing secret, overriding the provider's.
         cookie_name: Cookie name, overriding the per-provider default.
@@ -182,7 +227,8 @@ def authorize_url(
 
     Raises:
         ProviderMisconfigured: If no signing secret or redirect URI is
-            available from either the provider or this call.
+            available from either the provider or this call, or if a reserved
+            parameter was supplied.
     """
     signing_secret = _require_secret(provider, secret)
     callback = _require_redirect_uri(provider, redirect_uri)
@@ -208,9 +254,9 @@ def authorize_url(
         )
         params["code_challenge_method"] = "S256"
 
-    params.update(provider.authorize_params)
-    if extra_params:
-        params.update(extra_params)
+    extras = {**provider.authorize_params, **(extra_params or {})}
+    _reject_reserved(extras, provider)
+    params.update(extras)
 
     return AuthorizeURL(
         url=_merge_query(provider.authorize_endpoint, params),

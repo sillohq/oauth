@@ -187,6 +187,61 @@ class TestExtraParameters:
 
         assert query_of(url)["prompt"] == "consent"
 
+    def test_reserved_parameters_are_refused(self, google):
+        """Overriding the state would silently disarm CSRF protection.
+
+        The cookie is signed against the generated value, so a supplied one
+        either breaks every login or, if an attacker chose it, removes the
+        guarantee entirely. Either way it must not be ignorable.
+        """
+        with pytest.raises(ProviderMisconfigured, match="state"):
+            authorize_url(google, extra_params={"state": "attacker-chosen"})
+
+    def test_reserved_pkce_parameters_are_refused(self, google):
+        with pytest.raises(ProviderMisconfigured, match="code_challenge"):
+            authorize_url(google, extra_params={"code_challenge": "not-derived"})
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "state",
+            "code_challenge",
+            "code_challenge_method",
+            "response_type",
+            "client_id",
+            "redirect_uri",
+            "scope",
+        ],
+    )
+    def test_every_managed_parameter_is_refused(self, google, name):
+        with pytest.raises(ProviderMisconfigured):
+            authorize_url(google, extra_params={name: "x"})
+
+    def test_reserved_parameters_are_refused_at_provider_level_too(self, stub):
+        """The provider-level dict is merged into the same place."""
+        provider = GoogleOAuthProvider(
+            client_id=CLIENT_ID,
+            state_secret=STATE_SECRET,
+            redirect_uri=REDIRECT_URI,
+            authorize_params={"state": "fixed"},
+            transport=stub.transport,
+        )
+
+        with pytest.raises(ProviderMisconfigured, match="state"):
+            authorize_url(provider)
+
+    def test_the_error_says_what_to_do_instead(self, google):
+        with pytest.raises(ProviderMisconfigured, match="pass scopes= instead"):
+            authorize_url(google, extra_params={"scope": "openid"})
+
+    def test_unreserved_parameters_still_pass_through(self, google):
+        url = authorize_url(
+            google, extra_params={"prompt": "consent", "login_hint": "ada@example.com"}
+        ).url
+
+        assert query_of(url)["prompt"] == "consent"
+        assert query_of(url)["login_hint"] == "ada@example.com"
+
     def test_existing_query_on_the_endpoint_is_preserved(self, stub):
         provider = OAuthProvider(
             name="acme",
