@@ -50,6 +50,7 @@ from .flow import (
     exchange,
     exchange_code,
     fetch_profile,
+    refresh_tokens,
     state_cookie_name,
 )
 from .models import AuthorizeURL, OAuthProfile, OAuthTokens
@@ -97,6 +98,7 @@ __all__ = [
     "fetch_profile",
     "issue_state",
     "pkce_challenge",
+    "refresh_tokens",
     "state_cookie_name",
     "verify_state",
 ]

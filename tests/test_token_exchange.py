@@ -25,6 +25,7 @@ from sillo_oauth import (
     TokenExchangeFailed,
     derive_verifier,
     exchange_code,
+    refresh_tokens,
 )
 
 TOKEN_URL = GoogleOAuthProvider.token_endpoint
@@ -376,6 +377,112 @@ class TestTokenRequestCustomisation:
         form = stub.form_to("https://basic.test/token")
         assert form["custom_field"] == "present"
         assert "client_secret" not in form
+
+
+class TestRefresh:
+    """Trading a refresh token for a fresh access token."""
+
+    async def test_sends_the_refresh_grant(self, google, stub):
+        stub.route(TOKEN_URL, json={"access_token": "fresh-token"})
+
+        await refresh_tokens(google, refresh_token="stored-refresh")
+
+        form = stub.form_to(TOKEN_URL)
+        assert form["grant_type"] == "refresh_token"
+        assert form["refresh_token"] == "stored-refresh"
+
+    async def test_sends_client_credentials(self, google, stub):
+        stub.route(TOKEN_URL, json={"access_token": "fresh-token"})
+
+        await refresh_tokens(google, refresh_token="stored-refresh")
+
+        form = stub.form_to(TOKEN_URL)
+        assert form["client_id"] == CLIENT_ID
+        assert form["client_secret"] == CLIENT_SECRET
+
+    async def test_returns_the_new_access_token(self, google, stub):
+        stub.route(TOKEN_URL, json={"access_token": "fresh-token", "expires_in": 3600})
+
+        tokens = await refresh_tokens(google, refresh_token="stored-refresh")
+
+        assert tokens.access_token == "fresh-token"
+        assert tokens.expires_in == 3600
+
+    async def test_a_new_refresh_token_replaces_the_old_one(self, google, stub):
+        stub.route(
+            TOKEN_URL,
+            json={"access_token": "fresh-token", "refresh_token": "rotated"},
+        )
+
+        tokens = await refresh_tokens(google, refresh_token="stored-refresh")
+
+        assert tokens.refresh_token == "rotated"
+
+    async def test_an_omitted_refresh_token_carries_the_old_one_forward(
+        self, google, stub
+    ):
+        """Most providers reuse the refresh token and simply omit it.
+
+        A caller that always stores ``tokens.refresh_token`` would otherwise
+        overwrite a working token with None and be unable to refresh again.
+        """
+        stub.route(TOKEN_URL, json={"access_token": "fresh-token"})
+
+        tokens = await refresh_tokens(google, refresh_token="stored-refresh")
+
+        assert tokens.refresh_token == "stored-refresh"
+
+    async def test_narrower_scopes_can_be_requested(self, google, stub):
+        stub.route(TOKEN_URL, json={"access_token": "fresh-token"})
+
+        await refresh_tokens(
+            google, refresh_token="stored-refresh", scopes=["openid", "email"]
+        )
+
+        assert stub.form_to(TOKEN_URL)["scope"] == "openid email"
+
+    async def test_scope_is_omitted_when_not_narrowed(self, google, stub):
+        stub.route(TOKEN_URL, json={"access_token": "fresh-token"})
+
+        await refresh_tokens(google, refresh_token="stored-refresh")
+
+        assert "scope" not in stub.form_to(TOKEN_URL)
+
+    async def test_a_revoked_grant_is_reported(self, google, stub):
+        stub.route(TOKEN_URL, json={"error": "invalid_grant"}, status=400)
+
+        with pytest.raises(TokenExchangeFailed):
+            await refresh_tokens(google, refresh_token="revoked")
+
+    async def test_provider_unreachable(self, google, stub):
+        stub.fail(TOKEN_URL)
+
+        with pytest.raises(TokenExchangeFailed, match="Could not reach"):
+            await refresh_tokens(google, refresh_token="stored-refresh")
+
+    async def test_public_client_omits_the_secret(self, stub):
+        stub.route(TOKEN_URL, json={"access_token": "fresh-token"})
+        provider = GoogleOAuthProvider(
+            client_id=CLIENT_ID,
+            client_secret="",
+            state_secret=STATE_SECRET,
+            redirect_uri=REDIRECT_URI,
+            transport=stub.transport,
+        )
+
+        await refresh_tokens(provider, refresh_token="stored-refresh")
+
+        assert "client_secret" not in stub.form_to(TOKEN_URL)
+
+    async def test_refresh_never_sends_a_code_or_redirect_uri(self, google, stub):
+        """A refresh is a different grant, not a replayed exchange."""
+        stub.route(TOKEN_URL, json={"access_token": "fresh-token"})
+
+        await refresh_tokens(google, refresh_token="stored-refresh")
+
+        form = stub.form_to(TOKEN_URL)
+        assert "code" not in form
+        assert "redirect_uri" not in form
 
 
 class TestNetworkGuard:

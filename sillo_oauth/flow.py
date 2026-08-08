@@ -59,6 +59,7 @@ __all__ = [
     "exchange",
     "exchange_code",
     "fetch_profile",
+    "refresh_tokens",
     "state_cookie_name",
 ]
 
@@ -469,6 +470,48 @@ async def exchange_code(
         )
 
 
+async def refresh_tokens(
+    provider: OAuthProvider,
+    *,
+    refresh_token: str,
+    scopes: Sequence[str] | None = None,
+) -> OAuthTokens:
+    """Trade a refresh token for a fresh access token.
+
+    Only useful for a provider that issued one — most do so only when asked
+    for offline access, e.g. Google's
+    ``authorize_params={"access_type": "offline"}``.
+
+    Args:
+        provider: The provider to call.
+        refresh_token: The token stored from a previous exchange.
+        scopes: Narrower scopes to request. Omit to keep the ones already
+            granted; a provider cannot widen them here regardless.
+
+    Returns:
+        The refreshed tokens. If the provider did not return a new refresh
+        token — many reuse the old one indefinitely and simply omit it — the
+        one passed in is carried onto the result, so a caller that always
+        stores ``tokens.refresh_token`` cannot lose it.
+
+    Raises:
+        TokenExchangeFailed: The provider refused the refresh, was
+            unreachable, or returned something unreadable. A refused refresh
+            usually means the grant was revoked, and the person has to log in
+            again.
+    """
+    data = provider.refresh_request_data(refresh_token=refresh_token)
+    if scopes:
+        data["scope"] = provider.scope_separator.join(scopes)
+
+    async with provider.http_client() as client:
+        tokens = await _post_token_endpoint(provider, client, data)
+
+    if tokens.refresh_token is None:
+        return replace(tokens, refresh_token=refresh_token)
+    return tokens
+
+
 async def fetch_profile(provider: OAuthProvider, tokens: OAuthTokens) -> OAuthProfile:
     """Fetch a profile for tokens already in hand.
 
@@ -498,7 +541,7 @@ async def _request_tokens(
     redirect_uri: str,
     verifier: str | None,
 ) -> OAuthTokens:
-    """POST the token endpoint and read the result.
+    """Exchange an authorization code at the token endpoint.
 
     Args:
         provider: The provider to call.
@@ -514,10 +557,38 @@ async def _request_tokens(
         TokenExchangeFailed: On transport failure, a non-2xx status, an
             unreadable body, an ``error`` field, or a missing access token.
     """
-    data = provider.token_request_data(
-        code=code, redirect_uri=redirect_uri, verifier=verifier
+    return await _post_token_endpoint(
+        provider,
+        client,
+        provider.token_request_data(
+            code=code, redirect_uri=redirect_uri, verifier=verifier
+        ),
     )
 
+
+async def _post_token_endpoint(
+    provider: OAuthProvider,
+    client: httpx.AsyncClient,
+    data: dict[str, str],
+) -> OAuthTokens:
+    """POST a grant to the token endpoint and read the result.
+
+    Shared by the authorization-code exchange and the refresh, which differ
+    only in the form body they send — the transport, error handling and
+    response decoding are identical.
+
+    Args:
+        provider: The provider to call.
+        client: An open client.
+        data: The form body, already built by the provider.
+
+    Returns:
+        The parsed tokens.
+
+    Raises:
+        TokenExchangeFailed: On transport failure, a non-2xx status, an
+            unreadable body, an ``error`` field, or a missing access token.
+    """
     try:
         response = await client.post(
             provider.token_endpoint,
@@ -535,14 +606,14 @@ async def _request_tokens(
 
     if payload.get("error"):
         raise TokenExchangeFailed(
-            "Provider refused the authorization code",
+            "Provider refused the grant",
             provider=provider.name,
             detail=str(payload.get("error_description") or payload["error"]),
         )
 
     if response.status_code >= 400:
         raise TokenExchangeFailed(
-            "Provider refused the authorization code",
+            "Provider refused the grant",
             provider=provider.name,
             detail=response.text[:500],
         )

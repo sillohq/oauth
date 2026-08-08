@@ -222,6 +222,25 @@ class OAuthProvider:
             data["code_verifier"] = verifier
         return data
 
+    def refresh_request_data(self, *, refresh_token: str) -> dict[str, str]:
+        """The form body for a refresh.
+
+        Args:
+            refresh_token: The token issued alongside the original access
+                token.
+
+        Returns:
+            Form fields to POST to the token endpoint.
+        """
+        data = {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": self.client_id,
+        }
+        if self.client_secret:
+            data["client_secret"] = self.client_secret
+        return data
+
     # -- Profile ----------------------------------------------------------
 
     async def fetch_profile(
