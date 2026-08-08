@@ -469,10 +469,27 @@ class GithubOAuthProvider(OAuthProvider):
     authorize_endpoint = "https://github.com/login/oauth/authorize"
     token_endpoint = "https://github.com/login/oauth/access_token"
     userinfo_endpoint = "https://api.github.com/user"
-    emails_endpoint = "https://api.github.com/user/emails"
     default_scopes = ("read:user", "user:email")
     use_pkce = False
-    userinfo_headers = {"Accept": "application/vnd.github+json"}
+    userinfo_headers = MappingProxyType({"Accept": "application/vnd.github+json"})
+
+    #: Where the address list lives, when ``/user`` withholds it. Derived from
+    #: :attr:`userinfo_endpoint` rather than hardcoded, so pointing this
+    #: provider at a GitHub Enterprise host moves both endpoints together.
+    emails_endpoint: str
+
+    def __init__(self, *, emails_endpoint: str | None = None, **kwargs: Any) -> None:
+        """Configure the provider.
+
+        Args:
+            emails_endpoint: Where to look up addresses. Defaults to
+                ``<userinfo_endpoint>/emails``, which is right for github.com
+                and for any Enterprise host reached by overriding
+                ``userinfo_endpoint``.
+            **kwargs: Everything :class:`OAuthProvider` accepts.
+        """
+        super().__init__(**kwargs)
+        self.emails_endpoint = emails_endpoint or f"{self.userinfo_endpoint}/emails"
 
     async def fetch_profile(
         self, client: httpx.AsyncClient, tokens: OAuthTokens

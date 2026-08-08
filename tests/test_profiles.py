@@ -33,6 +33,10 @@ from sillo_oauth import (
 
 TOKENS = OAuthTokens(access_token=ACCESS_TOKEN)
 
+#: Derived from userinfo_endpoint at construction, so it is no longer a class
+#: attribute to reach for.
+GITHUB_EMAILS = "https://api.github.com/user/emails"
+
 
 def build(cls, stub, **kwargs):
     """Construct a provider of *cls* wired to *stub*."""
@@ -242,7 +246,7 @@ class TestGithubMapping:
             json={"id": 4242, "login": "ada", "email": None},
         )
         stub.route(
-            GithubOAuthProvider.emails_endpoint,
+            GITHUB_EMAILS,
             json=[
                 {"email": "old@example.com", "primary": False, "verified": True},
                 {"email": "ada@example.com", "primary": True, "verified": True},
@@ -265,7 +269,7 @@ class TestGithubMapping:
         await fetch_profile(github, TOKENS)
 
         urls = [str(request.url) for request in stub.requests]
-        assert GithubOAuthProvider.emails_endpoint not in urls
+        assert GITHUB_EMAILS not in urls
 
     async def test_ignores_unverified_primary_addresses(self, stub):
         stub.route(
@@ -273,7 +277,7 @@ class TestGithubMapping:
             json={"id": 4242, "login": "ada", "email": None},
         )
         stub.route(
-            GithubOAuthProvider.emails_endpoint,
+            GITHUB_EMAILS,
             json=[{"email": "ada@example.com", "primary": True, "verified": False}],
         )
         github = build(GithubOAuthProvider, stub)
@@ -289,7 +293,7 @@ class TestGithubMapping:
             json={"id": 4242, "login": "ada", "email": None},
         )
         stub.route(
-            GithubOAuthProvider.emails_endpoint,
+            GITHUB_EMAILS,
             json=[{"email": "other@example.com", "primary": False, "verified": True}],
         )
         github = build(GithubOAuthProvider, stub)
@@ -303,7 +307,7 @@ class TestGithubMapping:
             json={"id": 4242, "login": "ada", "email": None},
         )
         stub.route(
-            GithubOAuthProvider.emails_endpoint,
+            GITHUB_EMAILS,
             json={"message": "Forbidden"},
             status=403,
         )
@@ -319,17 +323,56 @@ class TestGithubMapping:
             GithubOAuthProvider.userinfo_endpoint,
             json={"id": 4242, "login": "ada", "email": None},
         )
-        stub.fail(GithubOAuthProvider.emails_endpoint)
+        stub.fail(GITHUB_EMAILS)
         github = build(GithubOAuthProvider, stub)
 
         assert (await fetch_profile(github, TOKENS)).email is None
+
+    async def test_enterprise_host_moves_both_endpoints(self, stub):
+        """Overriding userinfo_endpoint must not leave emails on github.com.
+
+        A hardcoded emails endpoint would send an Enterprise access token to
+        the public API, which at best 401s and at worst leaks the token to a
+        host the deployment never intended to talk to.
+        """
+        github = build(
+            GithubOAuthProvider,
+            stub,
+            userinfo_endpoint="https://github.acme-corp.test/api/v3/user",
+        )
+        stub.route(github.userinfo_endpoint, json={"id": 7, "login": "ada"})
+        stub.route(
+            "https://github.acme-corp.test/api/v3/user/emails",
+            json=[{"email": "ada@acme-corp.test", "primary": True, "verified": True}],
+        )
+
+        profile = await fetch_profile(github, TOKENS)
+
+        assert profile.email == "ada@acme-corp.test"
+        assert all("api.github.com" not in str(r.url) for r in stub.requests)
+
+    async def test_emails_endpoint_can_be_set_outright(self, stub):
+        github = build(
+            GithubOAuthProvider,
+            stub,
+            emails_endpoint="https://elsewhere.test/addresses",
+        )
+        stub.route(
+            GithubOAuthProvider.userinfo_endpoint, json={"id": 7, "login": "ada"}
+        )
+        stub.route(
+            "https://elsewhere.test/addresses",
+            json=[{"email": "ada@example.com", "primary": True, "verified": True}],
+        )
+
+        assert (await fetch_profile(github, TOKENS)).email == "ada@example.com"
 
     async def test_malformed_emails_response_is_ignored(self, stub):
         stub.route(
             GithubOAuthProvider.userinfo_endpoint,
             json={"id": 4242, "login": "ada", "email": None},
         )
-        stub.route(GithubOAuthProvider.emails_endpoint, json={"not": "a list"})
+        stub.route(GITHUB_EMAILS, json={"not": "a list"})
         github = build(GithubOAuthProvider, stub)
 
         assert (await fetch_profile(github, TOKENS)).email is None
