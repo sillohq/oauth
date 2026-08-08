@@ -477,16 +477,41 @@ async def _request_tokens(
             detail=", ".join(sorted(payload)) or "<empty response>",
         )
 
-    expires_in = payload.get("expires_in")
     return OAuthTokens(
         access_token=str(access_token),
         token_type=str(payload.get("token_type") or "Bearer"),
         refresh_token=payload.get("refresh_token"),
-        expires_in=int(expires_in) if str(expires_in or "").isdigit() else None,
+        expires_in=_parse_expires_in(payload.get("expires_in")),
         scope=payload.get("scope"),
         id_token=payload.get("id_token"),
         raw=payload,
     )
+
+
+def _parse_expires_in(value: Any) -> int | None:
+    """Read a token lifetime, whatever shape the provider sent it in.
+
+    Providers are inconsistent here: an int, a decimal string, and a float
+    are all in the wild. A lifetime is advisory — the token either works or
+    it does not — so anything unreadable becomes ``None`` rather than
+    failing an otherwise good login.
+
+    Args:
+        value: The raw ``expires_in`` field.
+
+    Returns:
+        The lifetime in whole seconds, or ``None`` if absent or unreadable.
+        Negative values are dropped too: an already-expired token is a
+        provider bug, and reporting it as a negative lifetime just moves the
+        surprise into the caller's arithmetic.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        seconds = int(float(value))
+    except (TypeError, ValueError):
+        return None
+    return seconds if seconds >= 0 else None
 
 
 def _decode_token_response(response: httpx.Response, provider: str) -> dict[str, Any]:

@@ -18,14 +18,16 @@ from sillo_oauth import GoogleOAuthProvider, authorize_url, exchange, OAuthError
 google = GoogleOAuthProvider(
     client_id=...,
     client_secret=...,
-    state_secret=...,                # signs the state cookie; your own key
+    state_secret=...,  # signs the state cookie; your own key
     redirect_uri="https://example.com/auth/google/callback",
 )
+
 
 @app.get("/auth/google/redirect")
 async def start(request, response):
     authorize = authorize_url(google)
     return response.redirect(authorize.url).set_cookie(**authorize.cookie_kwargs())
+
 
 @app.get("/auth/google/callback")
 async def finish(request, response):
@@ -83,7 +85,9 @@ Anything else uses `OAuthProvider` directly:
 ```python
 gitlab = OAuthProvider(
     name="gitlab",
-    client_id=..., client_secret=..., state_secret=...,
+    client_id=...,
+    client_secret=...,
+    state_secret=...,
     authorize_endpoint="https://gitlab.com/oauth/authorize",
     token_endpoint="https://gitlab.com/oauth/token",
     userinfo_endpoint="https://gitlab.com/api/v4/user",
@@ -108,17 +112,17 @@ acme = OAuthProvider(
 ## `OAuthProfile`
 
 ```python
-profile.provider        # "google"
-profile.subject         # stable provider-side id — the only safe account key
-profile.key             # "google:112233" — unique across providers
+profile.provider  # "google"
+profile.subject  # stable provider-side id — the only safe account key
+profile.key  # "google:112233" — unique across providers
 profile.email
 profile.email_verified  # False also means "the provider did not say"
 profile.name
 profile.username
 profile.avatar_url
-profile.raw             # the untouched userinfo payload
-profile.tokens          # access/refresh tokens, for calling the provider later
-profile.return_to       # whatever you passed to authorize_url(return_to=...)
+profile.raw  # the untouched userinfo payload
+profile.tokens  # access/refresh tokens, for calling the provider later
+profile.return_to  # whatever you passed to authorize_url(return_to=...)
 ```
 
 Key accounts on `subject`, never on `email`: addresses get reassigned, and an
@@ -167,9 +171,9 @@ a worker, a CLI, a test:
 
 ```python
 profile = await complete(provider, code=..., state=..., cookie_value=...)
-tokens  = await exchange_code(provider, code=..., verifier=...)
+tokens = await exchange_code(provider, code=..., verifier=...)
 profile = await fetch_profile(provider, tokens)
-tokens  = await refresh_tokens(provider, refresh_token=...)
+tokens = await refresh_tokens(provider, refresh_token=...)
 ```
 
 Storing state somewhere other than a cookie works the same way — hand the
@@ -178,7 +182,9 @@ stored value back explicitly:
 ```python
 request.session["oauth_state"] = authorize.cookie_value
 ...
-profile = await exchange(google, request, state_value=request.session.pop("oauth_state"))
+profile = await exchange(
+    google, request, state_value=request.session.pop("oauth_state")
+)
 ```
 
 ## Development

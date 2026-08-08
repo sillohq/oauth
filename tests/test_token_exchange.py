@@ -155,6 +155,36 @@ class TestSuccessfulResponses:
 
         assert (await exchange_code(google, code="c")).expires_in == 3600
 
+    async def test_float_expiry_is_parsed(self, stub, google):
+        """Some providers send a decimal; a plain int() on it would raise."""
+        stub.route(TOKEN_URL, json={"access_token": ACCESS_TOKEN, "expires_in": 3599.7})
+
+        assert (await exchange_code(google, code="c")).expires_in == 3599
+
+    async def test_decimal_string_expiry_is_parsed(self, stub, google):
+        stub.route(
+            TOKEN_URL, json={"access_token": ACCESS_TOKEN, "expires_in": "3599.0"}
+        )
+
+        assert (await exchange_code(google, code="c")).expires_in == 3599
+
+    async def test_negative_expiry_is_dropped(self, stub, google):
+        """An already-expired token is a provider bug, not a lifetime."""
+        stub.route(TOKEN_URL, json={"access_token": ACCESS_TOKEN, "expires_in": -5})
+
+        assert (await exchange_code(google, code="c")).expires_in is None
+
+    async def test_boolean_expiry_is_dropped(self, stub, google):
+        """``int(True)`` is 1, which would silently mean "expires in 1s"."""
+        stub.route(TOKEN_URL, json={"access_token": ACCESS_TOKEN, "expires_in": True})
+
+        assert (await exchange_code(google, code="c")).expires_in is None
+
+    async def test_zero_expiry_is_kept(self, stub, google):
+        stub.route(TOKEN_URL, json={"access_token": ACCESS_TOKEN, "expires_in": 0})
+
+        assert (await exchange_code(google, code="c")).expires_in == 0
+
     async def test_authorization_header_is_built_from_the_token(self, google):
         tokens = await exchange_code(google, code="test-code")
 
