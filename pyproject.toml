@@ -6,12 +6,25 @@ build-backend = "hatchling.build"
 name = "sillo-oauth"
 version = "0.0.1a0"
 description = "OAuth 2.0 / OpenID Connect login for Sillo — plain functions, no router, no middleware."
+readme = "README.md"
 requires-python = ">=3.10"
 license = "BSD-3-Clause"
 authors = [
     {name = "Chidebele Dunamis", email = "techwithdunamix@gmail.com"}
 ]
 keywords = ["sillo", "oauth", "oauth2", "oidc", "sso", "google", "github", "asgi"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP :: Session",
+    "Typing :: Typed",
+]
 dependencies = [
     # Only the pure-HTTP parts of the framework are touched (Request, and the
     # HMAC helpers in sillo.helpers.crypto), so no ORM extra is required here.
@@ -20,6 +33,12 @@ dependencies = [
     "sillo-framework>=0.0.1a15",
     "httpx>=0.23.3,<0.29.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/sillohq/oauth"
+Repository = "https://github.com/sillohq/oauth"
+Documentation = "https://sillolabs.com"
+Issues = "https://github.com/sillohq/oauth/issues"
 
 [project.optional-dependencies]
 dev = [
