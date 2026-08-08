@@ -292,7 +292,17 @@ class TestCallbackRejections:
 
     def test_tampered_state_cookie_is_rejected(self, client):
         started = client.get("/auth/google/redirect")
+
+        # The jar is cleared first, and the result asserted, because
+        # `cookies.set` does not necessarily *replace*: httpx keys cookies on
+        # (domain, path, name), and the one the redirect set carries explicit
+        # attributes that a bare set() does not. Left as-is the jar holds two
+        # `oauth_state_google` values, the genuine one wins, and the test
+        # passes while proving nothing -- which is exactly what it did until
+        # CI ran it on another Python and the login succeeded.
+        client.cookies.clear()
         client.cookies.set("oauth_state_google", "forged.value")
+        assert len(client.cookies) == 1
 
         response = client.get(
             f"/auth/google/callback?code=test-code&state={state_from(started)}"
