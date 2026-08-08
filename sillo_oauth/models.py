@@ -95,9 +95,13 @@ class AuthorizeURL:
         return kwargs
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class OAuthTokens:
     """What the token endpoint returned.
+
+    The repr is redacted. Every field here is a live credential, and the
+    default dataclass repr would have printed all of them — into a log line
+    that formats a profile, or into any traceback holding one in a frame.
 
     Attributes:
         access_token: The credential for calling the provider's API.
@@ -120,6 +124,20 @@ class OAuthTokens:
     scope: str | None = None
     id_token: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)
+
+    def __repr__(self) -> str:
+        """A repr that names what is held without printing any of it.
+
+        Which tokens exist, and their scope and lifetime, is what anyone
+        debugging actually needs; the token values themselves are exactly
+        what must not reach a log aggregator or an error tracker.
+        """
+        held = [name for name in ("refresh_token", "id_token") if getattr(self, name)]
+        return (
+            f"OAuthTokens(access_token=<redacted>, token_type={self.token_type!r}, "
+            f"expires_in={self.expires_in!r}, scope={self.scope!r}, "
+            f"also_holds={held!r})"
+        )
 
     def authorization_header(self) -> str:
         """The ``Authorization`` value for calling the provider's API.

@@ -649,6 +649,62 @@ class TestProfileModel:
         with pytest.raises(FrozenInstanceError):
             profile.subject = "456"  # type: ignore[misc]
 
+    def test_token_repr_does_not_print_the_credentials(self):
+        """A profile in a log line or a traceback must not leak the token.
+
+        `logger.info("signed in %s", profile)` is an ordinary thing to write,
+        and the default dataclass repr put a live access token into it.
+        """
+        tokens = OAuthTokens(
+            access_token="ya29.live-access-token",
+            refresh_token="1//live-refresh-token",
+            id_token="eyJ.live-id-token",
+            raw={"access_token": "ya29.live-access-token"},
+        )
+
+        printed = repr(tokens)
+
+        assert "ya29.live-access-token" not in printed
+        assert "1//live-refresh-token" not in printed
+        assert "eyJ.live-id-token" not in printed
+
+    def test_token_repr_still_says_what_is_held(self):
+        tokens = OAuthTokens(
+            access_token="secret",
+            refresh_token="secret2",
+            expires_in=3600,
+            scope="openid",
+        )
+
+        printed = repr(tokens)
+
+        assert "refresh_token" in printed, "which tokens exist is useful"
+        assert "3600" in printed
+        assert "openid" in printed
+
+    def test_a_profile_does_not_leak_its_tokens_either(self):
+        """The profile's repr embeds the tokens' repr."""
+        profile = OAuthProfile(
+            provider="google",
+            subject="1",
+            tokens=OAuthTokens(access_token="ya29.live-access-token"),
+        )
+
+        assert "ya29.live-access-token" not in repr(profile)
+
+    def test_str_of_a_token_is_redacted_too(self):
+        """dataclasses fall back to __repr__ for __str__."""
+        tokens = OAuthTokens(access_token="ya29.live-access-token")
+
+        assert "ya29.live-access-token" not in str(tokens)
+        assert "ya29.live-access-token" not in f"{tokens}"
+
+    def test_the_token_is_still_reachable_where_it_matters(self):
+        tokens = OAuthTokens(access_token="ya29.live-access-token")
+
+        assert tokens.access_token == "ya29.live-access-token"
+        assert tokens.authorization_header() == "Bearer ya29.live-access-token"
+
     def test_defaults_are_conservative(self):
         profile = OAuthProfile(provider="google", subject="123")
 
