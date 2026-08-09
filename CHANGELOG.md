@@ -18,8 +18,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   against an older core, and 0.1.1 is tested against 0.0.2a1 and nothing
   below it.
 
-  If you are still on `silloApp`, it keeps working under 0.0.2a1 with a
-  `DeprecationWarning` and is removed in sillo-core 0.1.0.
+  If you are still on `silloApp`: it warns under sillo-core 0.0.2a1 and is
+  removed outright in 0.0.2a2, where importing it raises.
 
 ### Fixed
 
