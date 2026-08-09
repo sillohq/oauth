@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pytest
 from conftest import ACCESS_TOKEN, CLIENT_ID, CLIENT_SECRET, STATE_SECRET, ProviderStub
-from sillo import silloApp
+from sillo import SilloApp
 from sillo.auth import useAuth
 from sillo.auth.jwt_auth import JWTAuthBackend
 from sillo.auth.session_auth import SessionAuthBackend
@@ -39,7 +39,7 @@ async def ok(request, response):
     return response.json({"ok": True})
 
 
-def build_app(**kwargs) -> silloApp:
+def build_app(**kwargs) -> SilloApp:
     """An app with both shipped backends declared through ``auth=``.
 
     This is the wiring the docs recommend: backends go to the constructor, not
@@ -59,10 +59,10 @@ def build_app(**kwargs) -> silloApp:
         ],
     )
     kwargs.setdefault("auth_user_model", SimpleUser)
-    return silloApp(**kwargs)
+    return SilloApp(**kwargs)
 
 
-def document(app: silloApp) -> dict:
+def document(app: SilloApp) -> dict:
     """The document a reader actually gets."""
     return TestClient(app).get("/openapi.json").json()
 
@@ -73,7 +73,7 @@ def security_of(doc: dict, path: str, verb: str = "get"):
 
 
 class TestPublishedSchemes:
-    """What ``silloApp(auth=[...])`` puts under components.securitySchemes."""
+    """What ``SilloApp(auth=[...])`` puts under components.securitySchemes."""
 
     def test_jwt_backend_publishes_http_bearer(self):
         app = build_app()
@@ -133,7 +133,7 @@ class TestPublishedSchemes:
         ``bearerAuth``, so an empty app's document claims a credential it has
         no basis for.
         """
-        app = silloApp(title="t", version="1.0.0")
+        app = SilloApp(title="t", version="1.0.0")
         app.get("/me", handler=ok, auth=useAuth())
 
         doc = document(app)
@@ -153,7 +153,7 @@ class TestPublishedSchemes:
         """
         from sillo.auth import AuthenticationMiddleware
 
-        app = silloApp(title="t", version="1.0.0")
+        app = SilloApp(title="t", version="1.0.0")
         app.use(
             AuthenticationMiddleware(
                 user_model=SimpleUser, backend=[SessionAuthBackend()]
@@ -404,7 +404,7 @@ class TestCustomOAuth2Scheme:
             def describe(self):
                 return scheme
 
-        app = silloApp(
+        app = SilloApp(
             title="t",
             version="1.0.0",
             auth=[GoogleTokenBackend(secret_key=JWT_SECRET, check_blacklist=False)],
@@ -432,7 +432,7 @@ class TestTwoBackendsOneName:
 
     def test_conflicting_definitions_are_refused(self):
         with pytest.raises(ValueError, match="both claim the scheme"):
-            silloApp(
+            SilloApp(
                 title="t",
                 version="1.0.0",
                 auth=[
@@ -443,7 +443,7 @@ class TestTwoBackendsOneName:
             )
 
     def test_giving_one_a_distinct_name_resolves_it(self):
-        app = silloApp(
+        app = SilloApp(
             title="t",
             version="1.0.0",
             auth=[

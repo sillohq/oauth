@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sillo-oauth"
-version = "0.1.0"
+version = "0.1.1"
 description = "OAuth 2.0 / OpenID Connect login for Sillo — plain functions, no router, no middleware."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -30,7 +30,7 @@ dependencies = [
     # HMAC helpers in sillo.helpers.crypto), so no ORM extra is required here.
     # An application that resolves profiles onto ORM-backed users installs
     # `sillo-framework[record]` itself.
-    "sillo-framework>=0.0.1a15",
+    "sillo-framework>=0.0.2a1",
     "httpx>=0.23.3,<0.29.0",
 ]
 
@@ -46,7 +46,7 @@ dev = [
     "pytest-asyncio>=0.25.3",
     # The integration suite drives a real sillo app through session and JWT
     # login, which need the ORM-backed user base and PyJWT respectively.
-    "sillo-framework[record,jwt]>=0.0.1a15",
+    "sillo-framework[record,jwt]>=0.0.2a1",
 ]
 
 [tool.hatch.build.targets.wheel]

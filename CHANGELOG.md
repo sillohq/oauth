@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] — 2026-08-09
+
+### Changed
+
+- **Requires `sillo-framework>=0.0.2a1`**, where the application class was
+  renamed from `silloApp` to `SilloApp`.
+
+  Nothing in `sillo_oauth` names that class — the API is plain functions
+  taking a `Request`, and the README shows handlers rather than an
+  application — so no code here changed. The floor moves for two narrower
+  reasons: the integration suite builds a real Sillo app and so cannot run
+  against an older core, and 0.1.1 is tested against 0.0.2a1 and nothing
+  below it.
+
+  If you are still on `silloApp`, it keeps working under 0.0.2a1 with a
+  `DeprecationWarning` and is removed in sillo-core 0.1.0.
+
+### Fixed
+
+- **A release could ship with `sillo_oauth.__version__` reporting the wrong
+  version.** The release workflow compared the tag against `pyproject.toml`
+  only, and `__version__` is exported — so a bump that missed it would
+  publish and report success. The check now covers both.
+
 ## [0.1.0] — 2026-08-08
 
 First release. The package was written and then reviewed in one sitting, so

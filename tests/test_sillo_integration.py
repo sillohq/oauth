@@ -23,7 +23,7 @@ from conftest import (
     STATE_SECRET,
     ProviderStub,
 )
-from sillo import silloApp
+from sillo import SilloApp
 from sillo.auth import AuthenticationMiddleware, useAuth
 from sillo.auth.jwt_auth import JWTAuthBackend, create_jwt
 from sillo.auth.session_auth import SessionAuthBackend, login, logout
@@ -77,7 +77,7 @@ def state_from(response) -> str:
     return parse_qs(urlsplit(response.headers["location"]).query)["state"][0]
 
 
-def session_app() -> silloApp:
+def session_app() -> SilloApp:
     """An app with session-cookie authentication installed.
 
     ``app.use`` builds the middleware chain inside-out — the last registered
@@ -85,7 +85,7 @@ def session_app() -> silloApp:
     ``AuthenticationMiddleware`` in order to run *before* it. Reversed, the
     session backend finds no session and every request is anonymous.
     """
-    app = silloApp()
+    app = SilloApp()
     app.use(
         AuthenticationMiddleware(user_model=SimpleUser, backend=[SessionAuthBackend()])
     )
@@ -336,7 +336,7 @@ class TestJWTLogin:
 
     @pytest.fixture
     def client(self, google) -> TestClient:
-        app = silloApp()
+        app = SilloApp()
         app.use(
             AuthenticationMiddleware(
                 user_model=SimpleUser,
@@ -406,7 +406,7 @@ class TestNoPersistence:
     """OAuth used only to verify an identity, with no login at all."""
 
     def test_callback_can_simply_return_the_profile(self, google, stub):
-        app = silloApp()
+        app = SilloApp()
 
         async def start(request, response):
             authorize = authorize_url(google)
@@ -661,7 +661,7 @@ class TestCookieMechanics:
         sends it back, so the callback fails as a state mismatch with nothing
         obviously wrong at the redirect step.
         """
-        app = silloApp()
+        app = SilloApp()
 
         async def start(request, response):
             authorize = authorize_url(google)
@@ -695,7 +695,7 @@ class TestCookieMechanics:
         Pinned as a test because the natural reading order — set the cookie,
         then redirect — is the one that fails.
         """
-        app = silloApp()
+        app = SilloApp()
 
         async def start(request, response):
             authorize = authorize_url(google)

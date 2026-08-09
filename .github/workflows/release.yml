@@ -45,15 +45,24 @@ jobs:
       # tag of oauth-v0.2.0 against a pyproject still saying 0.1.0 publishes
       # 0.1.0 and reports success, and the version it claims to have released
       # is one that does not exist.
-      - name: The tag and the package must agree
+      #
+      # `sillo_oauth.__version__` is checked too because it is exported and so
+      # is what a user reads at runtime. Nothing had been checking it, and the
+      # same omission in sillo-core let 0.0.1a15 ship reporting a14.
+      - name: The tag, the package and __version__ must agree
         run: |
           TAG_VERSION="${{ steps.version.outputs.version }}"
           PKG_VERSION=$(python -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          MOD_VERSION=$(python -c "import re,pathlib; print(re.search(r'__version__ = \"(.*?)\"', pathlib.Path('sillo_oauth/__init__.py').read_text()).group(1))")
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
             echo "::error::Tag says $TAG_VERSION, pyproject.toml says $PKG_VERSION."
             exit 1
           fi
-          echo "both say $PKG_VERSION"
+          if [ "$TAG_VERSION" != "$MOD_VERSION" ]; then
+            echo "::error::Tag says $TAG_VERSION, sillo_oauth/__init__.py says $MOD_VERSION."
+            exit 1
+          fi
+          echo "all three say $PKG_VERSION"
 
       - name: Clean old builds
         run: rm -rf dist build ./*.egg-info
