@@ -37,7 +37,7 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/sillohq/oauth"
 Repository = "https://github.com/sillohq/oauth"
-Documentation = "https://sillolabs.com"
+Documentation = "https://docs.sillo.build"
 Issues = "https://github.com/sillohq/oauth/issues"
 
 [project.optional-dependencies]
