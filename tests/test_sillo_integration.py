@@ -23,7 +23,7 @@ from conftest import (
     STATE_SECRET,
     ProviderStub,
 )
-from sillo import SilloApp
+from sillo import HttpContext, SilloApp, json, redirect
 from sillo.auth import AuthenticationMiddleware, useAuth
 from sillo.auth.jwt_auth import JWTAuthBackend, create_jwt
 from sillo.auth.session_auth import SessionAuthBackend, login, logout
@@ -108,26 +108,26 @@ class TestSessionLogin:
     def client(self, google) -> TestClient:
         app = session_app()
 
-        async def start(request, response):
+        async def start(ctx: HttpContext):
             authorize = authorize_url(google, return_to="/me")
-            return response.redirect(authorize.url).set_cookie(
+            return redirect(authorize.url).set_cookie(
                 **authorize.cookie_kwargs(secure=False)
             )
 
-        async def finish(request, response):
+        async def finish(ctx: HttpContext):
             try:
-                profile = await exchange(google, request)
+                profile = await exchange(google, ctx)
             except OAuthError as exc:
-                return response.json({"error": exc.code}, status_code=400)
-            login(request, SimpleUser(profile.key))
-            return response.redirect(profile.return_to or "/")
+                return json({"error": exc.code}, status_code=400)
+            login(ctx, SimpleUser(profile.key))
+            return redirect(profile.return_to or "/")
 
-        async def me(request, response):
-            return response.json({"identity": request.user.identity})
+        async def me(ctx: HttpContext):
+            return json({"identity": ctx.user.identity})
 
-        async def sign_out(request, response):
-            logout(request)
-            return response.json({"ok": True})
+        async def sign_out(ctx: HttpContext):
+            logout(ctx)
+            return json({"ok": True})
 
         app.get("/auth/google/redirect", handler=start)
         app.get("/auth/google/callback", handler=finish)
@@ -181,18 +181,18 @@ class TestSessionLogin:
     def test_return_to_drives_the_final_redirect(self, google, stub):
         app = session_app()
 
-        async def start(request, response):
+        async def start(ctx: HttpContext):
             authorize = authorize_url(
-                google, return_to=request.query_params.get("next", "/")
+                google, return_to=ctx.query_params.get("next", "/")
             )
-            return response.redirect(authorize.url).set_cookie(
+            return redirect(authorize.url).set_cookie(
                 **authorize.cookie_kwargs(secure=False)
             )
 
-        async def finish(request, response):
-            profile = await exchange(google, request)
-            login(request, SimpleUser(profile.key))
-            return response.redirect(profile.return_to or "/")
+        async def finish(ctx: HttpContext):
+            profile = await exchange(google, ctx)
+            login(ctx, SimpleUser(profile.key))
+            return redirect(profile.return_to or "/")
 
         app.get("/auth/google/redirect", handler=start)
         app.get("/auth/google/callback", handler=finish)
@@ -207,25 +207,25 @@ class TestSessionLogin:
 
 
 class TestCallbackRejections:
-    """What a real callback endpoint does with a bad request."""
+    """What a real callback endpoint does with a bad ctx."""
 
     @pytest.fixture
     def client(self, google) -> TestClient:
         app = session_app()
 
-        async def start(request, response):
+        async def start(ctx: HttpContext):
             authorize = authorize_url(google)
-            return response.redirect(authorize.url).set_cookie(
+            return redirect(authorize.url).set_cookie(
                 **authorize.cookie_kwargs(secure=False)
             )
 
-        async def finish(request, response):
+        async def finish(ctx: HttpContext):
             try:
-                profile = await exchange(google, request)
+                profile = await exchange(google, ctx)
             except OAuthError as exc:
-                return response.json({"error": exc.code}, status_code=400)
-            login(request, SimpleUser(profile.key))
-            return response.json({"identity": profile.key})
+                return json({"error": exc.code}, status_code=400)
+            login(ctx, SimpleUser(profile.key))
+            return json({"identity": profile.key})
 
         app.get("/auth/google/redirect", handler=start)
         app.get("/auth/google/callback", handler=finish)
@@ -248,18 +248,18 @@ class TestCallbackRejections:
         """
         app = session_app()
 
-        async def start(request, response):
+        async def start(ctx: HttpContext):
             authorize = authorize_url(google)
-            return response.redirect(authorize.url).set_cookie(
+            return redirect(authorize.url).set_cookie(
                 **authorize.cookie_kwargs(secure=False)
             )
 
-        async def finish(request, response):
+        async def finish(ctx: HttpContext):
             try:
-                await exchange(google, request)
+                await exchange(google, ctx)
             except OAuthError as exc:
-                return response.json({"error": exc.code}, status_code=400)
-            return response.json({"ok": True})
+                return json({"error": exc.code}, status_code=400)
+            return json({"ok": True})
 
         app.get("/auth/google/redirect", handler=start)
         app.get("/auth/google/callback", handler=finish)
@@ -344,20 +344,20 @@ class TestJWTLogin:
             )
         )
 
-        async def start(request, response):
+        async def start(ctx: HttpContext):
             authorize = authorize_url(google)
-            return response.redirect(authorize.url).set_cookie(
+            return redirect(authorize.url).set_cookie(
                 **authorize.cookie_kwargs(secure=False)
             )
 
-        async def finish(request, response):
-            profile = await exchange(google, request)
+        async def finish(ctx: HttpContext):
+            profile = await exchange(google, ctx)
             # No session anywhere in this app.
             token = create_jwt({"id": profile.key}, JWT_SECRET)
-            return response.json({"access_token": token})
+            return json({"access_token": token})
 
-        async def me(request, response):
-            return response.json({"identity": request.user.identity})
+        async def me(ctx: HttpContext):
+            return json({"identity": ctx.user.identity})
 
         app.get("/auth/google/redirect", handler=start)
         app.get("/auth/google/callback", handler=finish)
@@ -408,15 +408,15 @@ class TestNoPersistence:
     def test_callback_can_simply_return_the_profile(self, google, stub):
         app = SilloApp()
 
-        async def start(request, response):
+        async def start(ctx: HttpContext):
             authorize = authorize_url(google)
-            return response.redirect(authorize.url).set_cookie(
+            return redirect(authorize.url).set_cookie(
                 **authorize.cookie_kwargs(secure=False)
             )
 
-        async def finish(request, response):
-            profile = await exchange(google, request)
-            return response.json(
+        async def finish(ctx: HttpContext):
+            profile = await exchange(google, ctx)
+            return json(
                 {"email": profile.email, "verified": profile.email_verified}
             )
 
@@ -445,20 +445,20 @@ class TestStateInTheSession:
         """
         app = session_app()
 
-        async def start(request, response):
+        async def start(ctx: HttpContext):
             authorize = authorize_url(google)
-            request.session["oauth_state"] = authorize.cookie_value
-            return response.redirect(authorize.url)
+            ctx.session["oauth_state"] = authorize.cookie_value
+            return redirect(authorize.url)
 
-        async def finish(request, response):
+        async def finish(ctx: HttpContext):
             try:
                 # sillo's Session has get/delete, not pop.
-                stored = request.session.get("oauth_state")
-                request.session.delete("oauth_state")
-                profile = await exchange(google, request, state_value=stored)
+                stored = ctx.session.get("oauth_state")
+                ctx.session.delete("oauth_state")
+                profile = await exchange(google, ctx, state_value=stored)
             except OAuthError as exc:
-                return response.json({"error": exc.code}, status_code=400)
-            return response.json({"key": profile.key})
+                return json({"error": exc.code}, status_code=400)
+            return json({"key": profile.key})
 
         app.get("/auth/google/redirect", handler=start)
         app.get("/auth/google/callback", handler=finish)
@@ -477,20 +477,20 @@ class TestStateInTheSession:
         """Popping it makes the callback single-use, which a cookie is not."""
         app = session_app()
 
-        async def start(request, response):
+        async def start(ctx: HttpContext):
             authorize = authorize_url(google)
-            request.session["oauth_state"] = authorize.cookie_value
-            return response.redirect(authorize.url)
+            ctx.session["oauth_state"] = authorize.cookie_value
+            return redirect(authorize.url)
 
-        async def finish(request, response):
+        async def finish(ctx: HttpContext):
             try:
                 # sillo's Session has get/delete, not pop.
-                stored = request.session.get("oauth_state")
-                request.session.delete("oauth_state")
-                profile = await exchange(google, request, state_value=stored)
+                stored = ctx.session.get("oauth_state")
+                ctx.session.delete("oauth_state")
+                profile = await exchange(google, ctx, state_value=stored)
             except OAuthError as exc:
-                return response.json({"error": exc.code}, status_code=400)
-            return response.json({"key": profile.key})
+                return json({"error": exc.code}, status_code=400)
+            return json({"key": profile.key})
 
         app.get("/auth/google/redirect", handler=start)
         app.get("/auth/google/callback", handler=finish)
@@ -518,30 +518,30 @@ class TestAccountLinking:
 
         app = session_app()
 
-        async def google_start(request, response):
+        async def google_start(ctx: HttpContext):
             authorize = authorize_url(google)
-            return response.redirect(authorize.url).set_cookie(
+            return redirect(authorize.url).set_cookie(
                 **authorize.cookie_kwargs(secure=False)
             )
 
-        async def google_finish(request, response):
-            profile = await exchange(google, request)
-            login(request, SimpleUser(profile.key))
-            return response.json({"identity": profile.key})
+        async def google_finish(ctx: HttpContext):
+            profile = await exchange(google, ctx)
+            login(ctx, SimpleUser(profile.key))
+            return json({"identity": profile.key})
 
-        async def github_start(request, response):
+        async def github_start(ctx: HttpContext):
             authorize = authorize_url(github)
-            return response.redirect(authorize.url).set_cookie(
+            return redirect(authorize.url).set_cookie(
                 **authorize.cookie_kwargs(secure=False)
             )
 
-        async def github_finish(request, response):
-            profile = await exchange(github, request)
-            if not request.user.is_authenticated:
-                return response.json({"error": "not_logged_in"}, status_code=401)
+        async def github_finish(ctx: HttpContext):
+            profile = await exchange(github, ctx)
+            if not ctx.user.is_authenticated:
+                return json({"error": "not_logged_in"}, status_code=401)
             # Linked to the *current* user, not to a newly matched one.
-            links[request.user.identity] = profile.key
-            return response.json({"linked": profile.key})
+            links[ctx.user.identity] = profile.key
+            return json({"linked": profile.key})
 
         app.get("/auth/google/redirect", handler=google_start)
         app.get("/auth/google/callback", handler=google_finish)
@@ -570,17 +570,17 @@ class TestAccountLinking:
         )
         app = session_app()
 
-        async def start(request, response):
+        async def start(ctx: HttpContext):
             authorize = authorize_url(github)
-            return response.redirect(authorize.url).set_cookie(
+            return redirect(authorize.url).set_cookie(
                 **authorize.cookie_kwargs(secure=False)
             )
 
-        async def finish(request, response):
-            await exchange(github, request)
-            if not request.user.is_authenticated:
-                return response.json({"error": "not_logged_in"}, status_code=401)
-            return response.json({"linked": True})
+        async def finish(ctx: HttpContext):
+            await exchange(github, ctx)
+            if not ctx.user.is_authenticated:
+                return json({"error": "not_logged_in"}, status_code=401)
+            return json({"linked": True})
 
         app.get("/connect/github", handler=start)
         app.get("/connect/github/callback", handler=finish)
@@ -607,25 +607,25 @@ class TestMultipleProviders:
         )
         app = session_app()
 
-        async def google_start(request, response):
+        async def google_start(ctx: HttpContext):
             authorize = authorize_url(google)
-            return response.redirect(authorize.url).set_cookie(
+            return redirect(authorize.url).set_cookie(
                 **authorize.cookie_kwargs(secure=False)
             )
 
-        async def github_start(request, response):
+        async def github_start(ctx: HttpContext):
             authorize = authorize_url(github)
-            return response.redirect(authorize.url).set_cookie(
+            return redirect(authorize.url).set_cookie(
                 **authorize.cookie_kwargs(secure=False)
             )
 
-        async def google_finish(request, response):
-            profile = await exchange(google, request)
-            return response.json({"key": profile.key})
+        async def google_finish(ctx: HttpContext):
+            profile = await exchange(google, ctx)
+            return json({"key": profile.key})
 
-        async def github_finish(request, response):
-            profile = await exchange(github, request)
-            return response.json({"key": profile.key})
+        async def github_finish(ctx: HttpContext):
+            profile = await exchange(github, ctx)
+            return json({"key": profile.key})
 
         app.get("/auth/google/redirect", handler=google_start)
         app.get("/auth/google/callback", handler=google_finish)
@@ -663,18 +663,18 @@ class TestCookieMechanics:
         """
         app = SilloApp()
 
-        async def start(request, response):
+        async def start(ctx: HttpContext):
             authorize = authorize_url(google)
-            return response.redirect(authorize.url).set_cookie(
+            return redirect(authorize.url).set_cookie(
                 **authorize.cookie_kwargs()  # secure=True by default
             )
 
-        async def finish(request, response):
+        async def finish(ctx: HttpContext):
             try:
-                await exchange(google, request)
+                await exchange(google, ctx)
             except OAuthError as exc:
-                return response.json({"error": exc.code}, status_code=400)
-            return response.json({"ok": True})
+                return json({"error": exc.code}, status_code=400)
+            return json({"ok": True})
 
         app.get("/auth/google/redirect", handler=start)
         app.get("/auth/google/callback", handler=finish)
@@ -697,10 +697,10 @@ class TestCookieMechanics:
         """
         app = SilloApp()
 
-        async def start(request, response):
+        async def start(ctx: HttpContext):
             authorize = authorize_url(google)
             response.set_cookie(**authorize.cookie_kwargs(secure=False))
-            return response.redirect(authorize.url)
+            return redirect(authorize.url)
 
         app.get("/auth/google/redirect", handler=start)
         client = TestClient(app, raise_server_exceptions=False)

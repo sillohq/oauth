@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0a1] - 2026-09-13
+
+First alpha, released alongside `sillo-framework` 1.0.0a1. Install with
+`pip install --pre sillo-oauth==1.0.0a1`.
+
+An alpha: this is what 1.0 is expected to look like, but the API is not frozen
+yet and may still change before `1.0.0`.
+
+### Changed
+
+- **The public signatures name `HttpContext`, not `Request`.** `exchange()` was
+  annotated `request: Request` via `from sillo.core.http import Request` under
+  `TYPE_CHECKING` — a class 1.0 deleted. It worked at runtime, because the
+  function only reads `.session`, `.query_params` and `.cookies`, all of which
+  a context provides; but the annotation did not resolve for anyone type
+  checking their application, and it named the wrong thing.
+
+### Fixed
+
+- **The test suite runs against 1.0.** Twenty-four tests were failing before
+  this release: their fixture handlers were declared `(request, response)`,
+  which 1.0 does not call. Ported to a single leading context and the response
+  builders from `sillo.responses`. 298 pass.
+
 ## [0.1.1] — 2026-08-09
 
 ### Changed

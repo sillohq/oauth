@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pytest
 from conftest import ACCESS_TOKEN, CLIENT_ID, CLIENT_SECRET, STATE_SECRET, ProviderStub
-from sillo import SilloApp
+from sillo import HttpContext, SilloApp, json, redirect
 from sillo.auth import useAuth
 from sillo.auth.jwt_auth import JWTAuthBackend
 from sillo.auth.session_auth import SessionAuthBackend
@@ -34,9 +34,9 @@ JWT_SECRET = "docs-jwt-secret-padded-to-32-bytes-plus"
 SESSION_SECRET = "docs-session-secret-padded-to-32-bytes"
 
 
-async def ok(request, response):
+async def ok(ctx: HttpContext):
     """A handler that does nothing but succeed."""
-    return response.json({"ok": True})
+    return json({"ok": True})
 
 
 def build_app(**kwargs) -> SilloApp:
@@ -496,19 +496,19 @@ class TestDocumentedFlowEndToEnd:
             SessionMiddleware(secret_key=SESSION_SECRET, session_cookie_secure=False)
         )
 
-        async def start(request, response):
+        async def start(ctx: HttpContext):
             authorize = authorize_url(google)
-            return response.redirect(authorize.url).set_cookie(
+            return redirect(authorize.url).set_cookie(
                 **authorize.cookie_kwargs(secure=False)
             )
 
-        async def finish(request, response):
-            profile = await exchange(google, request)
-            login(request, SimpleUser(profile.key))
-            return response.json({"key": profile.key})
+        async def finish(ctx: HttpContext):
+            profile = await exchange(google, ctx)
+            login(ctx, SimpleUser(profile.key))
+            return json({"key": profile.key})
 
-        async def me(request, response):
-            return response.json({"identity": request.user.identity})
+        async def me(ctx: HttpContext):
+            return json({"identity": ctx.user.identity})
 
         app.get("/auth/google/redirect", handler=start, exclude_from_schema=True)
         app.get("/auth/google/callback", handler=finish, exclude_from_schema=True)

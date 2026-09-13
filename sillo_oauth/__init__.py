@@ -69,7 +69,7 @@ from .state import (
     verify_state,
 )
 
-__version__ = "0.1.1"
+__version__ = "1.0.0a1"
 
 __all__ = [
     "AuthorizeURL",

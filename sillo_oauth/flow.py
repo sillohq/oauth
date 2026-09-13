@@ -25,9 +25,9 @@ failures redirect — stays in the handler that calls them::
             return response.redirect(f"/login?error={exc.code}")
         ...
 
-Each step also has a request-free form — :func:`complete`, :func:`exchange_code`
-and :func:`fetch_profile` — for callers whose credentials do not arrive as a
-sillo ``Request``.
+Each step also has a context-free form — :func:`complete`, :func:`exchange_code`
+and :func:`fetch_profile` — for callers whose credentials do not arrive on a
+sillo ``HttpContext``.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ from .providers import OAuthProvider
 from .state import derive_verifier, issue_state, pkce_challenge, verify_state
 
 if TYPE_CHECKING:
-    from sillo.core.http import Request
+    from sillo import HttpContext
 
 __all__ = [
     "authorize_url",
@@ -283,7 +283,7 @@ def authorize_url(
 
 async def exchange(
     provider: OAuthProvider,
-    request: Request,
+    request: HttpContext,
     *,
     secret: str | None = None,
     cookie_name: str | None = None,
@@ -355,9 +355,9 @@ async def complete(
 ) -> OAuthProfile:
     """Complete a login from already-extracted callback values.
 
-    The request-free form of :func:`exchange`, for callers whose callback did
-    not arrive as a sillo ``Request`` — a worker consuming a queued callback,
-    a CLI, a test.
+    The context-free form of :func:`exchange`, for callers whose callback did
+    not arrive on a sillo ``HttpContext`` — a worker consuming a queued
+    callback, a CLI, a test.
 
     The order of checks matters and is fixed: a provider-reported error is
     handled first (there is no code to exchange anyway), then state is
