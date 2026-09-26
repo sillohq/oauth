@@ -699,7 +699,9 @@ class TestCookieMechanics:
 
         async def start(ctx: HttpContext):
             authorize = authorize_url(google)
-            response.set_cookie(**authorize.cookie_kwargs(secure=False))
+            response.set_cookie(  # noqa: F821 - intentionally tests this error
+                **authorize.cookie_kwargs(secure=False)
+            )
             return redirect(authorize.url)
 
         app.get("/auth/google/redirect", handler=start)
